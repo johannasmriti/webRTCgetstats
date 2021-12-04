@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+    <body>
+        <video id="local" autoplay></video>
+        <video id="remote" autoplay></video>
+
+        <button onclick="clo()">HangUp</button>
+        <script>
+            const a = new RTCPeerConnection();
+            const b = new RTCPeerConnection();
+
+            a.onicecandidate=e=>{
+                if(e.candidate){
+                    b.addIceCandidate(e.candidate);
+                }
+            }
+            b.onicecandidate = e => {
+                if (e.candidate) {
+                    a.addIceCandidate(e.candidate);
+                }
+            }
+            navigator.mediaDevices.getUserMedia({
+                video:true
+      
+            }).then(stream=>{
+                document.getElementById('local').srcObject = stream;
+                a.addStream(stream);
+                return a.createOffer();
+            }).then(offer=> a.setLocalDescription(new RTCSessionDescription(offer)))
+            .then(()=>b.setRemoteDescription(a.localDescription))
+            .then(()=> b.createAnswer())
+            .then( answer => b.setLocalDescription(new RTCSessionDescription(answer)))
+            .then(()=> a.setRemoteDescription(b.localDescription))
+
+            b.ontrack = e=>{
+                document.getElementById("remote").srcObject = e.streams[0];
+
+            }
+            let bytesPrev = 0;
+            let timestampPrev = 0;
+            setInterval(()=>{
+                if(a&&b)
+                {
+                    a.getStats(null).then(results=>{
+                        const s = dumpStats(results);
+                       // console.log(s);
+                        results.forEach(report => {
+                            const now = report.timestamp;
+
+                            let bitrate;
+                            //if (report.type === 'inbound-rtp' && report.mediaType === 'video') {
+                                const bytes = report.bytesReceived;
+                                if (timestampPrev) {
+                                     bitrate = 8 * (bytes - bytesPrev) / (now - timestampPrev);
+                                    bitrate = Math.floor(bitrate);
+                                }
+                                
+                                console.log((report.bytesReceived)/(report.timestamp-timestampPrev))
+                                //bytesPrev = bytes;
+                            timestampPrev = now;
+                                                         //}
+                        console.log(bitrate)
+                        });
+                        console.log(s);
+                    },err=>{
+                        console.log(err);
+                     });
+                 }
+                 else{
+                    console.log("no connection");
+                 }
+            },3000)
+            function dumpStats(results)
+            {
+                let statsString = '';
+                results.forEach(res => {
+                    statsString += 'Report type=';
+                    statsString += res.type;
+                    statsString += '\n';
+                    statsString += 'id ' + res.id + '\n';
+                    statsString += 'time ' + res.timestamp + '\n';
+                    Object.keys(res).forEach(k => {
+                        if (k !== 'timestamp' && k !== 'type' && k !== 'id') {
+                            statsString += k + ': ' + res[k] + '\n';
+                        }
+                    });
+                });
+                return statsString;
+            }
+            a.getStats().then(stats=>{
+                console.log(stats);
+            })
+            function clo()
+            {
+                a.close();
+                b.close();
+            }
+
+        </script>
+    </body>
+</html>
